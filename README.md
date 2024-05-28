@@ -34,6 +34,10 @@ or conda:
 ```bash
 conda install bioconda::mappy conda-forge::biotite
 ```
+Then just clone the repository and run from the command line.
+```bash
+git clone https://github.com/tomdstanton/GetAlleles.git && cd GetAlleles
+```
 
 ### Usage
 ```bash
