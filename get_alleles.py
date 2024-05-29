@@ -214,8 +214,7 @@ def parse_args(a: list[str]):
                                help="Minimum identity percentage for alignment")
     allele_parser.add_argument("-c", "--min-cov", type=float, default=90, metavar='90',
                                help="Minimum coverage percentage for alignment")
-    allele_parser.add_argument("-t", "--table", type=codon.CodonTable.load,
-                               default=codon.CodonTable.load(11), help="Codon table to use for translation",
+    allele_parser.add_argument("-t", "--table", type=int, default=11, help="Codon table to use for translation",
                                metavar='11')
     allele_parser.add_argument("-p", "--allow_partial", action='store_true', help="Allow partial alleles")
 
@@ -401,6 +400,11 @@ def main():
         args.reference.seq.translate(args.table)
     except Exception as e:
         quit_with_error(f"Failed to load reference: {e}")
+
+    try:
+        args.table = codon.CodonTable.load(args.table)
+     except Exception as e:
+        quit_with_error(f"Failed to load translation table: {e}")
 
     if args.all:
         args.ffn = open(f"{args.all}.ffn", 'wt')
