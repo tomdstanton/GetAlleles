@@ -117,10 +117,10 @@ class Reference(Orf):
 class Assembly:
     """Convenience wrapper for the index (`mp.Aligner`), `Path` and name (ID) of the assembly"""
 
-    def __init__(self, path: Path | None = None, name: str | None = None):
+    def __init__(self, path: Path | None = None, name: str | None = None, max_n: int = 1):
         self.path = path or Path()
         self.name = name or path.name.strip('.gz').rsplit('.', 1)[0] if path else ''
-        self.aligner = mp.Aligner(str(self.path), best_n=1, n_threads=cpu_count())  # Set up aligner and index assembly
+        self.aligner = mp.Aligner(str(self.path), best_n=max_n, n_threads=cpu_count())  # Set up aligner and index assembly
 
     def __str__(self):
         return self.name
@@ -217,6 +217,8 @@ def parse_args(a: list[str]):
     allele_parser.add_argument("-t", "--table", type=int, default=11, help="Codon table to use for translation",
                                metavar='11')
     allele_parser.add_argument("-p", "--allow_partial", action='store_true', help="Allow partial alleles")
+    allele_parser.add_argument("-n", "--max_n", type=int, default=1, help="Maximum number of alleles per assembly",
+                               metavar='1')
 
     output_parser = parser.add_argument_group(bold("Output options"), "")
     output_parser.add_argument("-o", "--output", help="Write/append tsv report to file (default: stdout)",
@@ -313,36 +315,34 @@ def check_partial(query_length: int, query_start: int, query_end: int, ref_lengt
     return False
 
 
-def extract_orf(assembly: Path, ref: Reference, min_id: float, min_cov: float, allow_partial: bool = True,
-                verbose: bool = False) -> tuple[Orf, str] | None:
-    # assembly = Assembly(Path("test/assemblies/GCA_019930325.1_ASM1993032v1_genomic"))
-    # ref = args.ref
-
+def extract_orfs(assembly: Path, ref: Reference, min_id: float, min_cov: float, allow_partial: bool = True, max_n: int = 1,
+                verbose: bool = False) -> Generator[tuple[Orf, str], None, None]:
     try:
-        assembly = Assembly(assembly)  # This will trigger the build of the index
+        assembly = Assembly(assembly, max_n=max_n)  # This will trigger the build of the index
     except Exception as e:
         warning(f"Failed to parse {assembly}: {e}")  # Throws a warning so pipeline can continue
-        return None
+        yield None
     log(f"Aligning {ref} to {assembly}", verbose=verbose)
-    if (not (a := next(assembly.map(str(ref.seq)), None)) or (perc_id := a.mlen / a.blen * 100) < min_id or
-            (perc_cov := len(ref) / a.blen * 100) < min_cov):
+
+    n = 0
+    for a in assembly.map(str(ref.seq)):
+        if (perc_id := a.mlen / a.blen * 100) >= min_id and (perc_cov := len(ref) / a.blen * 100) >= min_cov):
+            new_query_start, new_query_end, new_ref_start, new_ref_end = adjust_codon_range(
+                a.q_st, a.q_en, a.r_st, a.r_en, a.strand, verbose=verbose)
+        
+            if partial := (check_partial(len(ref), new_query_start, new_query_end, a.ctg_len, new_ref_start, new_ref_end) and
+                           not allow_partial):  # Skip partial alleles if not allowed
+                warning(f"Partial ORF found in {assembly}")
+                yield None
+            n += 1
+            yield (Orf(ref.seq_id, assembly.name, a.ctg, new_ref_start, new_ref_end, a.strand, partial, perc_id, perc_cov,
+                        # TODO: Check if these are correct: https://jef.works/blog/2017/03/28/CIGAR-strings-for-dummies/
+                        deletion="I" in a.cigar_str,  # Insertion in query == deletion in reference
+                        insertion="D" in a.cigar_str  # Deletion in query == insertion in reference
+                        ),
+                    assembly.seq(a.ctg, new_ref_start, new_ref_end, a.strand))
+    if n == 0:
         warning(f"No alignment found for {ref} in {assembly}")
-        return None
-
-    new_query_start, new_query_end, new_ref_start, new_ref_end = adjust_codon_range(
-        a.q_st, a.q_en, a.r_st, a.r_en, a.strand, verbose=verbose)
-
-    if partial := (check_partial(len(ref), new_query_start, new_query_end, a.ctg_len, new_ref_start, new_ref_end) and
-                   not allow_partial):  # Skip partial alleles if not allowed
-        warning(f"Partial ORF found in {assembly}")
-        return None
-
-    return (Orf(ref.seq_id, assembly.name, a.ctg, new_ref_start, new_ref_end, a.strand, partial, perc_id, perc_cov,
-                # TODO: Check if these are correct: https://jef.works/blog/2017/03/28/CIGAR-strings-for-dummies/
-                deletion="I" in a.cigar_str,  # Insertion in query == deletion in reference
-                insertion="D" in a.cigar_str  # Deletion in query == insertion in reference
-                ),
-            assembly.seq(a.ctg, new_ref_start, new_ref_end, a.strand))
 
 
 def get_alleles(assemblies: list[Path], ref: Reference, out: TextIO, ffn: TextIO | None, faa: TextIO | None,
@@ -354,12 +354,12 @@ def get_alleles(assemblies: list[Path], ref: Reference, out: TextIO, ffn: TextIO
     """
     alleles, orthologs = {}, {}  # Hash alleles by nucleotide sequence and orthologs by protein sequence
     for assembly in assemblies:  # Extract ORFs from each assembly
-        if not (orf := extract_orf(assembly, ref, verbose=verbose, **kwargs)):
-            continue  # Skip if no ORF found
-        if orf[1] not in alleles:  # orf[1] is the nucleotide sequence
-            alleles[orf[1]] = [orf[0]]  # orf[0] is the Orf object, which doesn't store the sequence
-        else:  # If the nucleotide sequence is already in the dictionary, append the ORF
-            alleles[orf[1]].append(orf[0])
+        for orf in extract_orfs(assembly, ref, verbose=verbose, **kwargs)):
+            if orf:
+                if orf[1] not in alleles:  # orf[1] is the nucleotide sequence
+                    alleles[orf[1]] = [orf[0]]  # orf[0] is the Orf object, which doesn't store the sequence
+                else:  # If the nucleotide sequence is already in the dictionary, append the ORF
+                    alleles[orf[1]].append(orf[0])
 
     if not alleles:
         quit_with_error("No alignments found")
@@ -415,7 +415,7 @@ def main():
 
     orthologs = list(get_alleles(
         args.assemblies, args.reference, args.output, args.ffn, args.faa, args.table, args.no_header,
-        verbose=args.verbose, min_id=args.min_id, min_cov=args.min_cov, allow_partial=args.allow_partial))
+        verbose=args.verbose, min_id=args.min_id, min_cov=args.min_cov, allow_partial=args.allow_partial, max_n=args.max_n))
 
     if any([args.aln, args.nwk, args.mat]):  # Perform MSA if any of these options are set
         groups = orthologs if args.protein else [allele for ortholog in orthologs for allele in ortholog.alleles]
