@@ -326,7 +326,7 @@ def extract_orfs(assembly: Path, ref: Reference, min_id: float, min_cov: float, 
 
     n = 0
     for a in assembly.map(str(ref.seq)):
-        if (perc_id := a.mlen / a.blen * 100) >= min_id and (perc_cov := len(ref) / a.blen * 100) >= min_cov):
+        if (perc_id := a.mlen / a.blen * 100) >= min_id and (perc_cov := len(ref) / a.blen * 100) >= min_cov:
             new_query_start, new_query_end, new_ref_start, new_ref_end = adjust_codon_range(
                 a.q_st, a.q_en, a.r_st, a.r_en, a.strand, verbose=verbose)
         
@@ -354,13 +354,12 @@ def get_alleles(assemblies: list[Path], ref: Reference, out: TextIO, ffn: TextIO
     """
     alleles, orthologs = {}, {}  # Hash alleles by nucleotide sequence and orthologs by protein sequence
     for assembly in assemblies:  # Extract ORFs from each assembly
-        for orf in extract_orfs(assembly, ref, verbose=verbose, **kwargs)):
+        for orf in extract_orfs(assembly, ref, verbose=verbose, **kwargs):
             if orf:
                 if orf[1] not in alleles:  # orf[1] is the nucleotide sequence
                     alleles[orf[1]] = [orf[0]]  # orf[0] is the Orf object, which doesn't store the sequence
                 else:  # If the nucleotide sequence is already in the dictionary, append the ORF
                     alleles[orf[1]].append(orf[0])
-
     if not alleles:
         quit_with_error("No alignments found")
 
@@ -400,10 +399,10 @@ def main():
         args.reference.seq.translate(args.table)
     except Exception as e:
         quit_with_error(f"Failed to load reference: {e}")
-
+    
     try:
         args.table = codon.CodonTable.load(args.table)
-     except Exception as e:
+    except Exception as e:
         quit_with_error(f"Failed to load translation table: {e}")
 
     if args.all:
