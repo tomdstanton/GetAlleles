@@ -57,6 +57,7 @@ Allele options:
   -c 90, --min-cov 90   Minimum coverage percentage for alignment
   -t 11, --table 11     Codon table to use for translation
   -p, --allow_partial   Allow partial alleles
+  -n, --max_n 1         Maximum number of alleles per assembly
 
 Output options:
 
