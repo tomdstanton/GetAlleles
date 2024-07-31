@@ -1,5 +1,5 @@
 # GetAlleles :computer: :dna: :microbe:
-**Extract alleles genome assemblies**
+**Extract alleles from genome assemblies**
 
 ## Introduction
 GetAlleles is a simple program to extract alleles of target genes from genome assemblies.
