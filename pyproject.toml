@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "GetAlleles"
+authors = [
+    {name="Tom Stanton", email="tomdstanton@gmail.com" },
+]
+description = "Extract alleles from an assembly"
+readme = {file = "README.md", content-type = "text/markdown"}
+requires-python = ">=3.9"
+dependencies = ["mappy"]
+keywords = ["bioinformatics", "typing"]
+license = {file = "LICENSE"}
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+
+]
+dynamic = ["version"]
+
+[project.scripts]
+getalleles = "getalleles.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["getalleles"]
+
+[tool.setuptools.dynamic]
+version = {attr = "getalleles.version.__version__"}
