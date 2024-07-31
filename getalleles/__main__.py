@@ -38,7 +38,7 @@ except ImportError:
 def parse_args(a: list[str]):
     parser = argparse.ArgumentParser(
         usage="%(prog)s <reference> <assembly> [<assembly> ...] [options]",
-        description='Extract alleles genome assemblies', prog='getalleles', epilog=f"%(prog)s v{__version__}",
+        description='Extract alleles from genome assemblies', prog='getalleles', epilog=f"%(prog)s v{__version__}",
         formatter_class=argparse.RawTextHelpFormatter, add_help=False
     )
     input_parser = parser.add_argument_group(bold("Input"), "")
