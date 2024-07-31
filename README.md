@@ -19,7 +19,7 @@ pip install git+https://github.com/tomdstanton/GetAlleles.git
 ```
 usage: getalleles <reference> <assembly> [<assembly> ...] [options]
 
-Extract alleles genome assemblies
+Extract alleles from genome assemblies
 
 Input:
 
