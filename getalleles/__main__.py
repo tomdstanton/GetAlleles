@@ -86,7 +86,7 @@ def write_headers(tsv: TextIO | None = None, no_header: bool = False):
     """Write the headers to a file handle."""
     if tsv and not no_header and (tsv.name == '<stdout>' or not Path(tsv.name).stat().st_size):
         tsv.write(f"Reference\tAssembly\tContig\tStart\tEnd\tStrand\tIdentity\tCoverage\tCigar\tProblems\t"
-                  f"Copy_number\tDNA_hash\tProtein_hash\n")
+                  f"Copy_number\tProtein_length\tDNA_hash\tProtein_hash\n")
 
 
 # Classes --------------------------------------------------------------------------------------------------------------
@@ -125,7 +125,7 @@ class Allele:
         if format_spec == 'tsv':
             return (f"{self.ref}\t{self.assembly}\t{self.contig}\t{self.start}\t{self.end}\t{self.strand}\t"
                     f"{self.perc_id:.2f}\t{self.perc_cov:.2f}\t{self.cigar}\t{self.problems}\t{self.copy_n}\t"
-                    f"{self.dna_hash}\t{self.protein_hash}\n")
+                    f"{len(self.protein_seq)}\t{self.dna_hash}\t{self.protein_hash}\n")
         elif format_spec == 'ffn':
             return f">{self.dna_hash}\n{self.dna_seq}\n"
         elif format_spec == 'faa':

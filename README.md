@@ -64,7 +64,8 @@ By default, the program will output a BED-style TSV to `<stdout>` with the follo
 1. **Coverage**: Percent coverage of the allele
 1. **Problems**: "Partial" if gene runs off contig edge or "Truncated" if length of translation is less than the reference.
 1. **Cigar**: Alignment CIGAR string.
-1. **Copy_number**: Number of copies of the _gene_ in the assembly.
+1. **Copy_number**: _Relative_ copy number of the _gene_ (not allele) in the assembly, e.g. 1 for copy 1, 2 for copy 2 etc.
+1. **Protein_length**: Length of the protein sequence.
 1. **DNA_hash**: Hash of the DNA sequence.
 1. **Protein_hash**: Hash of the protein sequence.
 
