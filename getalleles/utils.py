@@ -15,11 +15,21 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, Generator, BinaryIO
+from zlib import decompress as gz_decompress
+from gzip import open as gz_open
+from bz2 import (decompress as bz2_decompress, open as bz2_open)
+from lzma import (decompress as xz_decompress, open as xz_open)
 
-from getalleles.log import log, quit_with_error
+from getalleles.log import log, quit_with_error, warning
 
-# Constants -----------------------------------------------------------------------------------------------------------
+
+# Constants ------------------------------------------------------------------------------------------------------------
+_MAGIC_BYTES = {b'\x1f\x8b': 'gz', b'\x42\x5a': 'bz2', b'\xfd7zXZ\x00': 'xz'}
+_OPEN = {'gz': gz_open, 'bz2': bz2_open, 'xz': xz_open}
+_DECOMPRESS = {'gz': gz_decompress, 'bz2': bz2_decompress, 'xz': xz_decompress}
+_MIN_N_BYTES = max(len(i) for i in _MAGIC_BYTES)  # Maximum number of bytes to read in a file to guess the compression
+_COMPLEMENT = str.maketrans("ACGT", "TGCA")
 _TRANS_TABLES = {
     1: {
         "TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L",
@@ -532,16 +542,14 @@ def translate(seq: str, table: int | dict[str, str], to_stop: bool = True, stop_
     return ''.join(protein)
 
 
-def check_file(path: str | Path) -> Path:
-    path = Path(path) if isinstance(path, str) else path
-    if not path.exists():
-        quit_with_error(f'{path} does not exist')
+def check_file(path: os.PathLike) -> Path | None:
+    if not (path := Path(path)).exists():
+        return warning(f'{path} does not exist')
     if not path.is_file():
-        quit_with_error(f'{path} is not a file')
-    elif path.stat().st_size == 0:
-        quit_with_error(f'{path} is empty')
-    else:
-        return path.absolute()
+        return warning(f'{path} is not a file')
+    if path.stat().st_size == 0:
+        return warning(f'{path} is empty')
+    return path.absolute()
 
 
 def check_cpus(cpus: int | None = 0, verbose: bool = False) -> int:
@@ -574,3 +582,91 @@ def check_out(path: str, mode: str = "at", parents: bool = True, exist_ok: bool 
 def check_python_version(major: int = 3, minor: int = 9):
     if sys.version_info.major < major or sys.version_info.minor < minor:
         quit_with_error(f'Python version {major}.{minor} or greater required')
+
+
+def range_overlap(range1: tuple[int, int], range2: tuple[int, int], skip_sort: bool = False) -> int:
+    """
+    Returns the overlap between two ranges
+    :param range1: Tuple of start and end positions
+    :param range2: Tuple of start and end positions
+    :param skip_sort: Skip sorting each range before calculating the overlap
+    :return: Integer of overlap
+    """
+    start1, end1 = range1 if skip_sort else sorted(range1)
+    start2, end2 = range2 if skip_sort else sorted(range2)
+    overlap_start = max(start1, start2)
+    overlap_end = min(end1, end2)
+    return max(0, overlap_end - overlap_start)
+
+
+def decompress(data: bytes, verbose: bool = False, *args, **kwargs) -> bytes:
+    """
+    Decompress bytes using magic bytes at the beginning of the data
+    :param data: Bytes to decompress
+    :param verbose: Print log messages to stderr
+    :return: Decompressed bytes
+    """
+    first_bytes = data[:_MIN_N_BYTES]
+    for magic, compression in _MAGIC_BYTES.items():
+        if first_bytes.startswith(magic):
+            log(f"Assuming data is compressed with {compression}", verbose=verbose)
+            try:
+                return _DECOMPRESS[compression](data, *args, **kwargs)
+            except Exception as e:
+                return warning(f"Error decompressing with {compression}; {first_bytes=}\n{e}")
+    log("Assuming data is uncompressed", verbose=verbose)
+    return data
+
+
+def opener(file: os.PathLike, verbose: bool = False, *args, **kwargs) -> TextIO | BinaryIO:
+    """
+    Opens a file with the appropriate open function based on the magic bytes at the beginning of the data
+    :param file: File to open
+    :param check: Check file exists and is not empty
+    :param verbose: Print log messages to stderr
+    :return: Decompressed bytes
+    """
+    with open(file, 'rb') as f:  # Open the file to read bytes
+        first_bytes = f.read(_MIN_N_BYTES)  # Get the bytes necessary to guess the compression type
+    for magic, compression in _MAGIC_BYTES.items():
+        if first_bytes.startswith(magic):
+            log(f"Assuming file is compressed with {compression}", verbose=verbose)
+            try:
+                return _OPEN[compression](file, *args, **kwargs)
+            except Exception as e:
+                return warning(f"Error opening with {compression}; {first_bytes=}\n{e}")
+    log("Assuming file is uncompressed", verbose=verbose)
+    return open(file, *args, **kwargs)
+    
+
+def parse_fasta(data: str | bytes | os.PathLike, verbose: bool = False) -> Generator[tuple[str, str, str], None, None]:
+    """
+    Simple multi-line fasta parser
+    :param data: String, bytes or a file with the data; bytes/files will undergo automatic decompression if needed
+    :param verbose: Print log messages to stderr
+    :return: A generator of tuples with the name, description and sequence of each record as strings
+    """
+    if isinstance(data, bytes):
+        data = decompress(data, verbose=verbose).decode()
+    elif Path(data).is_file():
+        with opener(data, mode='rt', verbose=verbose) as f:
+            data = f.read()
+    header, seq = '', []
+    for line in data.splitlines():  # Loop over lines in chunk
+        if line.startswith('>'):
+            if header and seq:
+                name, desc = header.split(' ', 1) if ' ' in header else (header, '')
+                yield name, desc, ''.join(seq)
+            header, seq = line.lstrip('>'), []
+        else:
+            seq.append(line)
+    if header and seq:
+        name, desc = header.split(' ', 1) if ' ' in header else (header, '')
+        yield name, desc, ''.join(seq)
+    else:
+        warning("No fasta records parsed")
+
+
+def reverse_complement(seq: str) -> str:
+    return seq.translate(_COMPLEMENT)[::-1]
+
