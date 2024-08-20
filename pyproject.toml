@@ -10,7 +10,6 @@ authors = [
 description = "Extract alleles from an assembly"
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.9"
-dependencies = ["mappy"]
 keywords = ["bioinformatics", "typing"]
 license = {file = "LICENSE"}
 classifiers = [

@@ -21,10 +21,9 @@ import argparse
 import hashlib
 from operator import attrgetter
 
-
 from getalleles.version import __version__
 from getalleles.log import log, bold
-from getalleles.utils import check_python_version, check_out, check_cpus, load_ttable
+from getalleles.utils import check_python_version, check_out, check_cpus, load_ttable, check_programs
 from getalleles.alignment import group_alns, cull_all
 from getalleles.assembly import References, Allele, load_assembly, write_headers
 
@@ -36,8 +35,8 @@ def parse_args(a: list[str]):
         description='Extract alleles from genome assemblies', prog='getalleles', epilog=f"%(prog)s v{__version__}",
         formatter_class=argparse.RawTextHelpFormatter, add_help=False
     )
-    input_parser = parser.add_argument_group(bold("Input"), "")
-    input_parser.add_argument("reference", help="Reference genes in ffn format",
+    input_parser = parser.add_argument_group(bold("Input"), "\nInput files / stdin can be compressed")
+    input_parser.add_argument("reference", help="Reference genes in ffn format, use - for stdin",
                               type=argparse.FileType('rb'), metavar="reference")
     input_parser.add_argument("assembly", nargs='+', help="Assembly file(s) in fna format",
                               metavar="assembly")
@@ -87,6 +86,7 @@ def parse_args(a: list[str]):
 def main():
     check_python_version(3, 9)
     args = parse_args(sys.argv[1:])
+    check_programs(['minimap2'], verbose=args.verbose)
     # args = parse_args(['test/alleles.ffn.xz', 'test/assemblies/GCA_019928405.1_ASM1992840v1_genomic.fna'])
     refs = References(args.reference, table=args.table, verbose=args.verbose)
     write_headers(args.tsv, args.no_header)

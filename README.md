@@ -3,7 +3,7 @@
 
 ## Introduction
 GetAlleles is a simple program to extract alleles of target genes from genome assemblies.
-It uses alignment via [`mappy`](https://pypi.org/project/mappy/) to align reference gene
+It uses alignment via [`minimap2`](https://lh3.github.io/minimap2) to align reference gene
 nucleotide sequences to the assembly contigs, and extracts the alleles that pass the identity
 and coverage thresholds. The extracted sequences are then translated to determine whether the
 protein is truncated. The nucleotide and amino acid sequences are hashed for easy allele
@@ -15,6 +15,8 @@ identification in tabular format and for submission to typing scheme databases s
 pip install git+https://github.com/tomdstanton/GetAlleles.git
 ```
 
+You also need [`minimap2`](https://lh3.github.io/minimap2) to be installed in your `$PATH`.
+
 ## Usage
 ```
 usage: getalleles <reference> <assembly> [<assembly> ...] [options]
@@ -23,23 +25,28 @@ Extract alleles from genome assemblies
 
 Input:
 
-  reference            Reference genes in ffn(.gz) format
-  assembly             Assembly file(s) in fna(.gz) format
+  Input files / stdin can be compressed
+
+  reference            Reference genes in ffn format, use - for stdin
+  assembly             Assembly file(s) in fna format
 
 Allele options:
 
   -i 80, --min-id 80   Minimum identity percentage for alignment
   -c 80, --min-cov 80  Minimum coverage percentage for alignment
+  --best-n 0           Best N hits per reference or 0 to report all (that pass filters)
+  --cull               Culls overlapping references so only the best is kept (that pass filters)
   --table 11           Codon table to use for translation
-  --dna-hashfunc sha1  Algorithm for hashing the allele DNA sequence
-  --pro-hashfunc md5   Algorithm for hashing the allele protein sequence
+  --dna-hash sha1      Algorithm for hashing the allele DNA sequence
+  --aa-hash md5        Algorithm for hashing the allele AA sequence
 
 Output options:
 
   -o , --tsv           Write/append tsv report to file (default: stdout)
-  --ffn [alleles.ffn]  Output allele nucleotide sequences (single file or directory)
-  --faa [alleles.faa]  Output allele amino acid sequences (single file or directory)
-  --no-header          Suppress header line
+  --ffn [alleles.ffn]  Output allele DNA sequences (single file or directory)
+  --faa [alleles.faa]  Output allele AA sequences (single file or directory)
+  --alt-header         Sample-specific fasta headers
+  --no-header          Suppress header in TSV
 
 Other options:
 
@@ -48,7 +55,7 @@ Other options:
   -v, --verbose        Verbose messages
   --version            Print version and exit
 
-getalleles v0.0.1b1
+getalleles v0.0.1
 ```
 
 ## Output
@@ -64,10 +71,12 @@ By default, the program will output a BED-style TSV to `<stdout>` with the follo
 1. **Coverage**: Percent coverage of the allele
 1. **Problems**: "Partial" if gene runs off contig edge or "Truncated" if length of translation is less than the reference.
 1. **Cigar**: Alignment CIGAR string.
-1. **Copy_number**: _Relative_ copy number of the _gene_ (not allele) in the assembly, e.g. 1 for copy 1, 2 for copy 2 etc.
-1. **Protein_length**: Length of the protein sequence.
+1. **DNA_length**: Length of the nucleotide sequence.
+1. **Ref_DNA_length**: Length of the reference nucleotide sequence.
+1. **AA_length**: Length of the protein sequence.
+1. **Ref_AA_length**: Length of the reference protein sequence.
 1. **DNA_hash**: Hash of the DNA sequence.
-1. **Protein_hash**: Hash of the protein sequence.
+1. **AA_hash**: Hash of the protein sequence.
 
 * This can be written/appended to a file with either the `-o/--tsv` flag or `>` and `>>` in bash.
 * The `--no-header` option will suppress the header line. If appending to a file, the header will only be written once.

@@ -670,3 +670,16 @@ def parse_fasta(data: str | bytes | os.PathLike, verbose: bool = False) -> Gener
 def reverse_complement(seq: str) -> str:
     return seq.translate(_COMPLEMENT)[::-1]
 
+
+def check_programs(progs: list[str], verbose: bool = False):
+    """Check if programs are installed and executable"""
+    bins = {  # Adapted from: https://unix.stackexchange.com/a/261971/375975
+        f: Path(f'{p}/{f}') for p in filter(
+            os.path.isdir, os.environ["PATH"].split(os.path.pathsep)
+        ) for f in os.listdir(p) if os.access(f'{p}/{f}', os.X_OK)
+    }
+    for program in progs:
+        if program in bins:
+            log(f'{program}: {bins[program]}', verbose=verbose)
+        else:
+            quit_with_error(f'{program} not found')
