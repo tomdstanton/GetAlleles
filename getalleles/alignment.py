@@ -16,7 +16,6 @@ from itertools import groupby
 from operator import attrgetter
 
 from getalleles.utils import range_overlap
-from getalleles.log import warning
 
 
 # Classes -------------------------------------------------------------------------------------------------------------
@@ -49,14 +48,14 @@ class Alignment:
         self.mapq = mapq  # Mapping quality (0-255 with 255 for missing)
         self.tags = tags or {}  # {tag: value} pairs
         self.perc_id = self.mlen / self.blen * 100
-        self.perc_cov = self.blen / self.q_len * 100
+        self.perc_cov = self.blen / (self.r_en - self.r_st) * 100
 
     @classmethod
     def from_paf_line(cls, line: str):
         """
         Parse a line in PAF format and return an Alignment object.
         """
-        if len(line := line.split('\t')) < 12:
+        if len(line := line.strip().split('\t')) < 12:
             raise AlignmentError(f"Line has < 12 columns: {line}")
         try:
             return Alignment(  # Parse standard fields
@@ -99,19 +98,6 @@ class Alignment:
 
 
 # Functions ------------------------------------------------------------------------------------------------------------
-def iter_alns(data: str) -> Generator[Alignment, None, None]:
-    """Iterate over alignments in a chunk of data"""
-    # It's probably better to decode the data here rather than in the Alignment class
-    if not data:
-        return None
-    for line in data.splitlines():
-        try:
-            yield Alignment.from_paf_line(line)
-        except AlignmentError:
-            warning(f"Skipping invalid alignment line: {line}")
-            continue
-
-
 def group_alns(alignments: Iterable[Alignment], key: str = 'q') -> Generator[tuple[str, Generator[Alignment]]]:
     """Group alignments by a key"""
     yield from groupby(sorted(alignments, key=attrgetter(key)), key=attrgetter(key))

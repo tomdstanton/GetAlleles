@@ -3,8 +3,8 @@
 
 ## Introduction
 GetAlleles is a simple program to extract alleles of target genes from genome assemblies.
-It uses alignment via [`minimap2`](https://lh3.github.io/minimap2) to align reference gene
-nucleotide sequences to the assembly contigs, and extracts the alleles that pass the identity
+It uses alignment via [`minimap2`](https://lh3.github.io/minimap2) or [`miniprot`](https://lh3.github.io/miniprot) to align reference genes to 
+assembly contigs, and extracts the alleles that pass the identity
 and coverage thresholds. The extracted sequences are then translated to determine whether the
 protein is truncated. The nucleotide and amino acid sequences are hashed for easy allele
 identification in tabular format and for submission to typing scheme databases such as
@@ -14,8 +14,9 @@ identification in tabular format and for submission to typing scheme databases s
 ```bash
 pip install git+https://github.com/tomdstanton/GetAlleles.git
 ```
+If using nucleotide references, [`minimap2`](https://lh3.github.io/minimap2) needs to be installed in your `$PATH`.
 
-You also need [`minimap2`](https://lh3.github.io/minimap2) to be installed in your `$PATH`.
+If using amino acid references, [`miniprot`](https://lh3.github.io/miniprot) needs to be installed in your `$PATH`.
 
 ## Usage
 ```
@@ -27,15 +28,19 @@ Input:
 
   Input files / stdin can be compressed
 
-  reference            Reference genes in ffn format, use - for stdin
+  reference            Reference genes in ffn/fna format, use - for stdin
   assembly             Assembly file(s) in fna format
 
-Allele options:
+Alignment options:
 
   -i 80, --min-id 80   Minimum identity percentage for alignment
   -c 80, --min-cov 80  Minimum coverage percentage for alignment
   --best-n 0           Best N hits per reference or 0 to report all (that pass filters)
   --cull               Culls overlapping references so only the best is kept (that pass filters)
+  --args               Extra arguments to pass to mini{map2,prot}; MUST BE WRAPPED
+
+Allele options:
+
   --table 11           Codon table to use for translation
   --dna-hash sha1      Algorithm for hashing the allele DNA sequence
   --aa-hash md5        Algorithm for hashing the allele AA sequence
@@ -55,7 +60,7 @@ Other options:
   -v, --verbose        Verbose messages
   --version            Print version and exit
 
-getalleles v0.0.1
+getalleles v0.0.2b0
 ```
 
 ## Output
@@ -95,27 +100,27 @@ The ID (header) of each sequence is the hash digest of the sequence.
 
 Extract reference genes from assemblies and save results to a file:
 ```bash
-getalleles genes.ffn assemblies/*.fna > alleles.tsv
+getalleles genes.fasta assemblies/*.fna > alleles.tsv
 ```
 OR
 ```bash
-getalleles genes.ffn assemblies/*.fna -o alleles.tsv
+cat genes.fasta | getalleles - assemblies/*.fna -o alleles.tsv
 ```
 To do the same but output the nucleotide sequences to a fasta file.
 ```bash
-getalleles genes.ffn assemblies/*.fna -o alleles.tsv --ffn alleles.ffn
+getalleles genes.fasta assemblies/*.fna -o alleles.tsv --ffn alleles.ffn
 ```
 OR
 ```bash
-getalleles genes.ffn assemblies/*.fna -o alleles.tsv --ffn - > alleles.ffn
+getalleles genes.fasta assemblies/*.fna -o alleles.tsv --ffn - > alleles.ffn
 ```
 To output the allele protein sequences into an MSA program:
 ```bash
-getalleles genes.ffn assemblies/*.fna -o alleles.tsv --ffn --faa - > muscle
+getalleles genes.fasta assemblies/*.fna -o alleles.tsv --ffn --faa - | muscle
 ```
 To output _one sequence file per assembly_ :
 ```bash
-getalleles genes.ffn assemblies/*.fna -o alleles.tsv --ffn dna_seqs/ --faa protein_seqs/
+getalleles genes.fasta assemblies/*.fna -o alleles.tsv --ffn dna_seqs/ --faa protein_seqs/
 ```
 
 ## Acknowledgements

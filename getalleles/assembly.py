@@ -14,16 +14,18 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, DEVNULL
 from typing import Generator, TextIO, BinaryIO
 from re import compile
 
-from getalleles.alignment import Alignment, iter_alns
+from getalleles.alignment import Alignment
 from getalleles.utils import check_file, parse_fasta, translate, load_ttable, reverse_complement
 from getalleles.log import log, warning, quit_with_error
 
 # Constants -----------------------------------------------------------------------------------------------------------
 _ASSEMBLY_FASTA_REGEX = compile(r'\.(fasta|fa|fna|ffn)(\.(gz|xz|bz2))?$')
+_IUPAC_AA = set('ACDEFGHIKLMNPQRSTVWY')  # IUPAC standard protein alphabet
+_IUPAC_UNAMBIGUOUS_DNA = set('GATC')  # IUPAC standard unambiguous nucleotide alphabet
 
 
 # Classes -------------------------------------------------------------------------------------------------------------
@@ -46,9 +48,15 @@ class Assembly:
         if format_spec in {'ffn', 'faa', 'tsv'}:
             return ''.join(i.format(format_spec, **kwargs) for i in self.alleles)
 
-    def map(self, query: str, threads: int) -> Generator[Alignment, None, None]:
-        return iter_alns(Popen(f"minimap2 -c -t {threads} {self.path} -".split(), stdin=PIPE, stdout=PIPE,
-                               stderr=PIPE).communicate(query.encode())[0].decode())
+    def map(self, refs: References, threads: int, extra_args: str = '', verbose: bool = False
+            ) -> Generator[Alignment, None, None]:
+        fmt, cmd = ('ffn', "minimap2 -c ") if refs.mol == 'DNA' else ('faa', f"miniprot -T {refs.T} ")
+        cmd += f"{extra_args} " if extra_args else ''
+        cmd += f'-t {threads} {self.path} -'
+        log(f"{cmd=}", verbose=verbose)
+        with Popen(cmd.split(), stdin=PIPE, stdout=PIPE, stderr=DEVNULL, universal_newlines=True) as p:  # Init process
+            for paf_line in p.communicate(refs.format(fmt))[0].splitlines():
+                yield Alignment.from_paf_line(paf_line)  # Yield the alignment as an Alignment object
 
     def write(self, tsv: TextIO | None = None, ffn: Path | TextIO | None = None, faa: Path | TextIO | None = None, **kwargs):
         if self.alleles:
@@ -130,12 +138,17 @@ class Allele:
 
 
 class References:
-    def __init__(self, handle: BinaryIO, table: dict[str, str] | None, verbose: bool = False):
+    def __init__(self, handle: BinaryIO, table: int, verbose: bool = False):
         self.name = handle.name
-        self.table = table or load_ttable(11)
+        self.T = table
+        self.table = load_ttable(table)
         self.references = {n: Reference(n, d, s, table=self.table) for n, d, s in parse_fasta(handle.read(), verbose)}
         if not self.references:
             quit_with_error(f"Could not load references from {self.name}")
+        if len(mol := {i.mol for i in self.references.values()}) > 1:
+            quit_with_error("All references must be either DNA or Amino Acid")
+        else:
+            self.mol = mol.pop()
 
     def __str__(self):
         return self.name
@@ -154,26 +167,28 @@ class References:
 
 
 class Reference:
-    def __init__(self, id_: str | None = None, desc: str | None = None, dna_seq: str | None = None, **kwargs):
+    def __init__(self, id_: str | None = None, desc: str | None = None, seq: str | None = None, **kwargs):
         self.id = id_ or ''
         self.desc = desc or ''
-        self.dna_seq = dna_seq
-        if len(dna_seq) % 3 != 0:
-            warning(f"DNA sequence for {self.id} is not a multiple of 3")
-        self.aa_seq = translate(dna_seq, **kwargs)
+        self.mol = 'DNA' if set(seq.upper()).issubset(_IUPAC_UNAMBIGUOUS_DNA) else 'AA'
+        if self.mol == 'DNA':
+            self.dna_seq = seq
+            if len(self.dna_seq) % 3 != 0:
+                warning(f"DNA sequence for {self.id} is not a multiple of 3")
+            self.aa_seq = translate(self.dna_seq, **kwargs)
+        else:
+            self.aa_seq = seq
+            self.dna_seq = ''
         if len(self.aa_seq) < 2:
             warning(f"Protein sequence for {self.id} is less than 2 residues")
 
     def __str__(self):
         return self.id
 
-    def __len__(self):
-        return len(self.dna_seq)
-
     def format(self, format_spec):
-        if format_spec == 'ffn':
+        if format_spec == 'ffn' and self.dna_seq:
             return f">{self.id}\n{self.dna_seq}\n"
-        if format_spec == 'faa':
+        if format_spec == 'faa' and self.aa_seq:
             return f">{self.id}\n{self.aa_seq}\n"
 
 
@@ -192,5 +207,5 @@ def write_headers(tsv: TextIO | None = None, no_header: bool = False):
     """Write the headers to a file handle."""
     if tsv and not no_header and (tsv.name == '<stdout>' or not Path(tsv.name).stat().st_size):
         tsv.write(f"Reference\tAssembly\tContig\tStart\tEnd\tStrand\tIdentity\tCoverage\tCigar\tProblems\t"
-                  f"DNA_length\tRef_DNA_length\tAA_length\tRef_AA_length\tDNA_hash\tProtein_hash\n")
+                  f"DNA_length\tRef_DNA_length\tAA_length\tRef_AA_length\tDNA_hash\tAA_hash\n")
 

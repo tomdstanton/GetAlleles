@@ -36,22 +36,26 @@ def parse_args(a: list[str]):
         formatter_class=argparse.RawTextHelpFormatter, add_help=False
     )
     input_parser = parser.add_argument_group(bold("Input"), "\nInput files / stdin can be compressed")
-    input_parser.add_argument("reference", help="Reference genes in ffn format, use - for stdin",
+    input_parser.add_argument("reference", help="Reference genes in ffn/fna format, use - for stdin",
                               type=argparse.FileType('rb'), metavar="reference")
     input_parser.add_argument("assembly", nargs='+', help="Assembly file(s) in fna format",
                               metavar="assembly")
 
+    alignment_parser = parser.add_argument_group(bold("Alignment options"), "")
+    alignment_parser.add_argument("-i", "--min-id", type=float, default=80, metavar='80',
+                                  help="Minimum identity percentage for alignment")
+    alignment_parser.add_argument("-c", "--min-cov", type=float, default=80, metavar='80',
+                                  help="Minimum coverage percentage for alignment")
+    alignment_parser.add_argument("--best-n", type=int, default=0, metavar='0',
+                                  help="Best N hits per reference or 0 to report all (that pass filters)")
+    alignment_parser.add_argument("--cull", action='store_true',
+                                  help="Culls overlapping references so only the best is kept (that pass filters)")
+    alignment_parser.add_argument("--args", default='', metavar='',
+                                  help="Extra arguments to pass to mini{map2,prot}; MUST BE WRAPPED")
+
     allele_parser = parser.add_argument_group(bold("Allele options"), "")
-    allele_parser.add_argument("-i", "--min-id", type=float, default=80, metavar='80',
-                               help="Minimum identity percentage for alignment")
-    allele_parser.add_argument("-c", "--min-cov", type=float, default=80, metavar='80',
-                               help="Minimum coverage percentage for alignment")
-    allele_parser.add_argument("--best-n", type=int, default=0, metavar='0',
-                               help="Best N hits per reference or 0 to report all (that pass filters)")
-    allele_parser.add_argument("--cull", action='store_true',
-                               help="Culls overlapping references so only the best is kept (that pass filters)")
-    allele_parser.add_argument("--table", type=lambda i: load_ttable(int(i)),
-                               default=load_ttable(11), help="Codon table to use for translation", metavar='11')
+    allele_parser.add_argument("--table", type=int, default=11,
+                               help="Codon table to use for translation", metavar='11')
     allele_parser.add_argument("--dna-hash", choices=hashlib.algorithms_available,
                                type=lambda i: getattr(hashlib, i), default=getattr(hashlib, 'sha1'),
                                help="Algorithm for hashing the allele DNA sequence ", metavar='sha1')
@@ -86,13 +90,14 @@ def parse_args(a: list[str]):
 def main():
     check_python_version(3, 9)
     args = parse_args(sys.argv[1:])
-    check_programs(['minimap2'], verbose=args.verbose)
-    # args = parse_args(['test/alleles.ffn.xz', 'test/assemblies/GCA_019928405.1_ASM1992840v1_genomic.fna'])
+
     refs = References(args.reference, table=args.table, verbose=args.verbose)
+    check_programs(['minimap2' if refs.mol == 'DNA' else 'miniprot'], verbose=args.verbose)
+
     write_headers(args.tsv, args.no_header)
     for assembly in args.assembly:
         if assembly := load_assembly(assembly, verbose=args.verbose):
-            align, alignments = assembly.map(refs.format('ffn'), args.threads), []
+            align, alignments = assembly.map(refs, args.threads, args.args, args.verbose), []
             # Filter alignments and group by query (the default for the `group_alns` function
             for _, alns in group_alns(filter(lambda i: i.perc_id >= args.min_id and i.perc_cov >= args.min_cov, align)):
                 alignments.extend(
@@ -101,9 +106,11 @@ def main():
                 ctg = assembly.contigs[ctg]  # Extract contig here, could do this in allele init but only one lookup
                 assembly.alleles.extend(
                     Allele(refs[a.q], assembly, ctg, a.r_st, a.r_en, a.strand, a.perc_id, a.perc_cov, a.tags['cg'],
-                           args.dna_hash, args.aa_hash, table=refs.table) for a in (cull_all(alns) if args.cull else alns)
+                           args.dna_hash, args.aa_hash, table=refs.table) for a in
+                    (cull_all(alns) if args.cull else alns)
                 )
-            assembly.write(args.tsv, args.ffn, args.faa, alt_header=args.alt_header)  # Write the results to the requested files
+            assembly.write(args.tsv, args.ffn, args.faa,
+                           alt_header=args.alt_header)  # Write the results to the requested files
 
     # Cleanup ----------------------------------------------------------------------------------------------------------
     for attr in vars(args):  # Close all open files in the args namespace if they aren't sys.stdout or sys.stdin
